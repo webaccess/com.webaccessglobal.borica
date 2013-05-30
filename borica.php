@@ -116,9 +116,9 @@ $entities[] = array(
       'class_name' => 'com.webaccessglobal.borica',
       'billing_mode' => 'notify',
       'user_name_label' => 'Terminal ID',
-      'pasword_label' => 'Private Key Pass',
-      'url_site_default' => 'https://gate.borica.bg/etlog',
-      'url_site_test_default' => 'https://gatet.borica.bg/etlog',
+      'password_label' => 'Private Key Pass',
+      'url_site_default' => 'https://gate.borica.bg/boreps',
+      'url_site_test_default' => 'https://gatet.borica.bg/boreps',
       'payment_type' => 1,
     ),
   );

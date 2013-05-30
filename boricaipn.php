@@ -42,7 +42,6 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
    * Constructor
    *
    * @param string $mode the mode of operation: live or test
-   *
    * @return void
    */
   function __construct($mode, &$paymentProcessor) {
@@ -73,40 +72,44 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
    * hex string from paymentexpress is passed to this function as hex string.
    */
   function main($boricaPostData) {
-    CRM_Core_Error::debug_var('$boricaPostData', $boricaPostData);
-
-    $privateData = $ids = $objects = array();
-    $config = CRM_Core_Config::singleton();
     $success = false;
 
-    $boricaPostData = $this->_getBOResp($boricaPostData, '<certificate file from borica>');
+    /*
+     * Bank public certificate file .cer extension with its location
+     */
+    $boricaPostData = $this->_getBOResp($boricaPostData);
+
+    // Getting transaction related data from cache table
+    $data = CRM_Core_BAO_Cache::getItem("borica_orderID_{$boricaPostData['ORDER_ID']}", 'com_webaccessglobal_borica', null);
+
+    // delete current user's last form preferences from cache table
+    CRM_Core_BAO_Cache::deleteGroup("borica_orderID_{$boricaPostData['ORDER_ID']}");
+
+    $component = $data['component'];
+    $qfKey = $data['qfKey'];
 
     /*
-     *Fix me with borica response
+     * @param array  $privateData  contains the CiviCRM related data
      */
-
-    $component = $boricaPostData['rvar_module'];
-    $qfKey = $boricaPostData['rvar_qfKey'];
-
     $privateData = $ids = $objects = array();
-    $privateData['transactionID'] = $boricaPostData['bank_transaction_id'];
-    $privateData['contributionID'] = $boricaPostData['rvar_contributionID'];
-    $privateData['contactID'] = $boricaPostData['rvar_contactID'];
-    $privateData['invoiceID'] = $boricaPostData['response_order_id'];
+    $privateData['transactionID'] = $boricaPostData['ORDER_ID'];//Transaction ID for Contribution
+    $privateData['contributionID'] = $data['contributionID'];
+    $privateData['contactID'] = $data['contactID'];
+    $privateData['invoiceID'] = $data['invoiceID'];
 
     if ($component == "event") {
-      $privateData['participantID'] = $boricaPostData['rvar_participantID'];
-      $privateData['eventID'] = $boricaPostData['rvar_eventID'];
+      $privateData['participantID'] = $data['participantID'];
+      $privateData['eventID'] = $data['eventID'];
     }
     else if ($component == "contribute") {
-      $privateData["membershipID"] = array_key_exists('rvar_membershipID', $boricaPostData) ? $boricaPostData['rvar_membershipID'] : '';
-      $privateData["relatedContactID"] = array_key_exists('rvar_relatedContactID', $boricaPostData) ? $boricaPostData['rvar_relatedContactID'] : '';
-      $privateData["onbehalf_dupe_alert"] = array_key_exists('rvar_onbehalf_dupe_alert', $boricaPostData) ? $boricaPostData['rvar_onbehalf_dupe_alert'] : '';
+      $privateData["membershipID"] = array_key_exists('membershipID', $data) ? $data['membershipID'] : '';
+      $privateData["relatedContactID"] = array_key_exists('relatedContactID', $data) ? $data['relatedContactID'] : '';
+      $privateData["onbehalf_dupe_alert"] = array_key_exists('onbehalf_dupe_alert', $data) ? $data['onbehalf_dupe_alert'] : '';
     }
 
-    list ($mode, $component, $duplicateTransaction) = self::getContext($privateData);
-    $mode = $mode ? 'test' : 'live';
+    list ($mode, $duplicateTransaction) = self::getContext($privateData);
     $privateData['is_test'] = $mode;
+    $mode = $mode ? 'test' : 'live';
 
     /**
      * Fix me as per civicrm versions
@@ -115,25 +118,25 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
     $paymentProcessor = CRM_Financial_BAO_PaymentProcessor::getPayment($this->_paymentProcessor['id'], $mode);
     $ipn = self::singleton($mode, $component, $paymentProcessor);
 
-
-
-    $boricaData = array();
-    $boricaData['trxn_id'] = $boricaPostData['bank_transaction_id'];
-    $boricaData['PurchaseAmount'] = $boricaPostData['amount'] ;
-    $boricaData['status'] = $boricaPostData['status'];
-
     /*
-     *Fix me with borica status
+     * @param array  $boricaData contains the Trnsaction related data
      */
+    $boricaData = array();
+    $boricaData['trxn_id'] = $boricaPostData['ORDER_ID'];// Bank Transaction ID
+    $boricaData['PurchaseAmount'] = $boricaPostData['AMOUNT']/100;
+    $boricaData['TRANSACTION_CODE'] = $boricaPostData['TRANSACTION_CODE'];
+    $boricaData['status'] = $boricaPostData['RESPONSE_CODE'];
+    $boricaData['SIGNOK'] = $boricaPostData['SIGNATURE_OK'];
 
-    if ($boricaPostData['status'] == 'valid')
+    // Borica's RESPONSE_CODE == 00 means transaction completed successfully
+    if ($boricaPostData['RESPONSE_CODE'] == 00)
       $success = TRUE;
 
     if ($duplicateTransaction == 0) {
       $ipn->newOrderNotify($success, $privateData, $component, $boricaData);
     }
 
-    //Check status and take appropriate action
+    //Check $component and take appropriate action
     if ($component == "event") {
       $baseURL = 'civicrm/event/register';
       $query = $success ? "_qf_ThankYou_display=true&qfKey={$qfKey}" : "_qf_Register_display=1&cancel=1&qfKey={$qfKey}";
@@ -150,11 +153,10 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
 
     $finalURL = CRM_Utils_System::url($baseURL, $query, false, null, false);
     CRM_Utils_System::redirect($finalURL);
-
   }
 
-
-  function _getBOResp($boricaData, $publicKey){
+  function _getBOResp($boricaData) {
+    $publicKey = '';
     // manipulation of the $_GET["eBorica"] parameter
     $message = base64_decode($boricaData['eBorica']);
     $boricaResponse['TRANSACTION_CODE'] = substr($message, 0, 2);
@@ -166,17 +168,36 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
     $boricaResponse['PROTOCOL_VERSION'] = substr($message, 53, 3);
     $boricaResponse['SIGN'] = substr($message, 56, 128);
 
+    // Getting transaction related data from cache table
+    $data = CRM_Core_BAO_Cache::getItem("borica_orderID_{$boricaResponse['ORDER_ID']}", 'com_webaccessglobal_borica', null);
+    $privateData['contributionID'] = $data['contributionID'];
+    $contributionID = $privateData['contributionID'];
+    $contribution = & new CRM_Contribute_DAO_Contribution();
+    $contribution->id = $contributionID;
+
+    if (!$contribution->find(true)) {
+      CRM_Core_Error::debug_log_message("Could not find contribution record: $contributionID");
+      echo "Failure: Could not find contribution record for $contributionID<p>";
+      exit();
+    }
+    $isTest = $contribution->is_test;
+    if ($isTest) {
+      //Test mode public certificate file
+      $publicKey = '/home/prathamesh/public_html/borica/certificate-new/BORICA-Public_test_201212.cer';
+    }
+    else {
+      //Production mode public certificate file
+      $publicKey = '/home/prathamesh/public_html/borica/certificate-new/BORICA-Public_prod_201212.cer';
+    }
+    
     $fp = fopen($publicKey, "r");
     $cert = fread($fp, 8192);
     fclose($fp);
     $pubkeyid = openssl_get_publickey($cert);
-    print_r($pubkeyid);
-    exit;
     $boricaResponse['SIGNATURE_OK'] = openssl_verify(substr($message, 0, strlen($message) - 128), $boricaResponse['SIGN'], $pubkeyid);
     openssl_free_key($pubkeyid);
     return $boricaResponse;
   }
-
 
   function &error($errorCode = null, $errorMessage = null) {
     $e = & CRM_Core_Error::singleton();
@@ -194,7 +215,7 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
    *
    * @param array  $privateData  contains the CiviCRM related data
    * @param string $component    the CiviCRM component
-   * @param array  $moneriseselectData contains the Merchant related data
+   * @param array  $borikaData contains the Merchant related data
    *
    * @return void
    *
@@ -229,32 +250,27 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
     $input['trxn_id'] = $boricaData['trxn_id'];
     $input['is_test'] = $privateData['is_test'];
     $input['amount'] = $boricaData['PurchaseAmount'];
-
     $transaction = new CRM_Core_Transaction();
 
     /*
-      Fix me asper borica status
-
-      Valid-Approved : The transaction was approved and successfully validated
-      Valid-Declined : The transaction was declined and successfully validated
-      Invalid : No reference to this transactionKey, validation failed
-      Invalid-ReConfirmed : An attempt has already been made with this transaction key,
-      validation failed
-      Invalid-Bad_Source : The Referring URL is not correct, validation failed
+     * Check the signature of transaction '1' means correct otherwise incorrect
      */
-
-    switch ($boricaData['status']) {
-      case 'Invalid-ReConfirmed':
+    if ($boricaData['SIGNOK'] == '1') {
+      switch ($boricaData['status']) {
+      case '00': // Transaction Completed
         break;
-      case 'Invalid':
+      case '94': // Transaction Cancelled
         return $this->cancelled($objects, $transaction);
         break;
-      case 'Invalid-Bad_Source':
-      case 'Valid-Declined':
+      default : // Transaction Failed
         return $this->failed($objects, $transaction);
         break;
+      }
     }
-
+    else {
+      //Signature is incorrect we set transaction as failed
+      return $this->failed($objects, $transaction);
+    }
     if ($contribution->invoice_id != $input['invoice']) {
       CRM_Core_Error::debug_log_message("Invoice values dont match between database and IPN request");
       echo "Failure: Invoice values dont match between database and IPN request<p>";
@@ -311,12 +327,6 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
       exit();
     }
 
-    if (stristr($contribution->source, 'Online Contribution')) {
-      $component = 'contribute';
-    }
-    else if (stristr($contribution->source, 'Online Event Registration')) {
-      $component = 'event';
-    }
     $isTest = $contribution->is_test;
 
     $duplicateTransaction = 0;
@@ -333,20 +343,15 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
       }
     }
     else {
-
+      // we are in event mode
       $eventID = $privateData['eventID'];
       if (!$eventID) {
         CRM_Core_Error::debug_log_message("Could not find event ID");
         echo "Failure: Could not find eventID<p>";
         exit();
       }
-
-      // we are in event mode
-      // make sure event exists and is valid
-      //require_once 'CRM/Event/DAO/Event.php';
       $event = & new CRM_Event_DAO_Event();
       $event->id = $eventID;
-
       if (!$event->find(true)) {
         CRM_Core_Error::debug_log_message("Could not find event: $eventID");
         echo "Failure: Could not find event: $eventID<p>";
@@ -355,10 +360,9 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
     }
 
     return array(
-      $isTest,
-      $component,
-      $duplicateTransaction
-    );
+                 $isTest,
+                 $duplicateTransaction
+                 );
   }
 
 }

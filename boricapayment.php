@@ -77,87 +77,82 @@ class com_webaccessglobal_borica extends CRM_Core_Payment {
 
     $terminalID = $this->_paymentProcessor['user_name'];
     $privateKeyPass = $this->_paymentProcessor['password'];
-    //  $this->_setParam( 'applicationID'     , $paymentProcessor['signature'] );
     $gateBoricaURL = $this->_paymentProcessor['url_site'];
-    $privateKeyFileName = '/home/nitesh/tmp/solrtest.key';
 
+    /*
+     * Bank private key file .key extension with its location
+     */
     if ($this->_mode == 'live') {
-      $csrFile = '<live private key path>';
+      //production mode private key
+      $privateKeyFileName = '/home/prathamesh/public_html/borica/certificate-new/liveborica.clataccess.in.key';
     }
     else {
-      $csrFile = '<test private key path>';
+      //Test mode private key 
+      $privateKeyFileName = '/home/prathamesh/public_html/borica/certificate-new/testborica.clataccess.in.key';
     }
 
     if ($component != 'contribute' && $component != 'event') {
       CRM_Core_Error::fatal(ts('Component is invalid'));
     }
 
-    /**
-     *@cid = ContactID
-     *@conID=ContributionID
-     *@m=module
-     *@eID=EventID
-     *@pID=ParticipantID
-     *@mID=membershipID
-     *@rCID=relatedContactID
-     *@oBDA=onBehalfDupeAlert
-     **/
-
-    $customDesc = "cid={$params['contactID']}" . "&conID={$params['contributionID']}" . "&m={$component}";
+    $boricaValues = array();
+    $boricaValues['qfKey'] = $params['qfKey'];
+    $boricaValues['contactID'] = $params['contactID'];
+    $boricaValues['contributionID'] = $params['contributionID'];
+    $boricaValues['component'] = $component;
 
     if ($component == 'event') {
-      $customDesc .= "&eID={$params['eventID']}&pID={$params['participantID']}";
+      $boricaValues['eventID'] = $params['eventID'];
+      $boricaValues['participantID'] =$params['participantID'];
     }
     else {
       $membershipID = CRM_Utils_Array::value('membershipID', $params);
       if ($membershipID) {
-        $customDesc .= "&mID={$membershipID}";
+        $boricaValues['membershipID'] = $membershipID;
       }
       $relatedContactID = CRM_Utils_Array::value('related_contact', $params);
       if ($relatedContactID) {
-        $customDesc .= "&rCID={$relatedContactID}";
-
+        $boricaValues['relatedContactID'] = $relatedContactID;
         $onBehalfDupeAlert = CRM_Utils_Array::value('onbehalf_dupe_alert', $params);
         if ($onBehalfDupeAlert) {
-          $customDesc .= "&oBDA={$onBehalfDupeAlert}";
+          $boricaValues['onbehalf_dupe_alert'] = $onBehalfDupeAlert;
         }
       }
     }
+    if (!empty($params['invoiceID']))  {
+      $boricaValues['invoiceID'] = $params['invoiceID'];
+    }
+    $Borica_orderID = substr($params['invoiceID'],-15);
+    // Insert current user's last selected form preferences into cache table
+    CRM_Core_BAO_Cache::setItem($boricaValues, "borica_orderID_{$Borica_orderID}", 'com_webaccessglobal_borica', null);
+
     $amount = $params['amount'];
     $amount *= 100;
     $message = 10;
     $message .= $params['receive_date'];
     $message .= str_pad($amount, 12, "0", STR_PAD_LEFT);
-    $message .= $terminalID;
-    $message .= str_pad($params['invoiceID'], 15);
-    $message .= str_pad($customDesc, 125);
+    $message .= (string) $terminalID;
+    $message .= str_pad((string) $Borica_orderID, 15); 
+    $message .= str_pad($params['description'], 125);
     $message .= 'EN';
-    $message .= 1.1;
-    $message .= $params['currencyID'];
+    $message .= '1.1';
+    /*
+     * Currently Borica payment processor only accept payments which are in BGN currency 
+     */
+    $message .= 'BGN';
 
     $fp = fopen($privateKeyFileName, "r");
     $priv_key = fread($fp, 8192);
     fclose($fp);
+    //Encrypt the sending message using private key
     $pkeyid = openssl_get_privatekey($priv_key, $privateKeyPass);
     openssl_sign($message, $signature, $pkeyid);
     openssl_free_key($pkeyid);
     $message .= $signature;
-
     $action = "/registerTransaction?eBorica=";
-
-    echo($message);
-    echo('<br>');
-
     $url = $gateBoricaURL . $action . urlencode(base64_encode($message));
-    echo($url);
-    $result = file_get_contents($url);
-    CRM_Core_Error::debug('$result', $result);
-    CRM_Core_Error::debug('$params', $params);
-     CRM_Core_Error::debug('$url', $url);
-    exit;
     CRM_Utils_System::redirect($url);
   }
-
 
   /**
    * Get the value of a field if set
@@ -215,7 +210,7 @@ class com_webaccessglobal_borica extends CRM_Core_Payment {
     }
   }
 
-    /**
+  /**
    * Handle return response from payment processor
    */
   function handlePaymentNotification() {
