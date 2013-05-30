@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<extension key="com.webaccessglobal.borica" type="module">
+  <downloadUrl>https://codeload.github.com/webaccess/com.webaccessglobal.borica/zip/master</downloadUrl>
+  <file>borica</file>
+  <name>Borica</name>
+  <label>Borica</label>
+  <description>Borica payment processor for CiviCRM</description>
+  <license>AGPL</license>
+  <maintainer>
+    <author>Web Access</author>
+    <email>info@webaccessglobal.com</email>
+  </maintainer>
+  <releaseDate>2013-05-07</releaseDate>
+  <version>1.6</version>
+  <develStage>alpha</develStage>
+  <compatibility>
+    <ver>4.2</ver>
+    <ver>4.3.3</ver>
+  </compatibility>
+  <comments>test</comments>
+  <civix>
+    <namespace>CRM</namespace>
+  </civix>
+</extension>
