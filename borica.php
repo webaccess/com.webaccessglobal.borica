@@ -2,6 +2,8 @@
 
 require_once 'borica.civix.php';
 require_once 'boricapayment.php';
+require_once 'config.borica.php';
+
 /**
  * Implementation of hook_civicrm_config
  */

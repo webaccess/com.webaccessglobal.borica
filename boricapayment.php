@@ -84,11 +84,11 @@ class com_webaccessglobal_borica extends CRM_Core_Payment {
      */
     if ($this->_mode == 'live') {
       //production mode private key
-      $privateKeyFileName = '/home/prathamesh/public_html/borica/certificate-new/liveborica.clataccess.in.key';
+      $privateKeyFileName = PROD_MODE_PRIVATE_KEY;
     }
     else {
       //Test mode private key 
-      $privateKeyFileName = '/home/prathamesh/public_html/borica/certificate-new/testborica.clataccess.in.key';
+      $privateKeyFileName = TEST_MODE_PRIVATE_KEY;
     }
 
     if ($component != 'contribute' && $component != 'event') {

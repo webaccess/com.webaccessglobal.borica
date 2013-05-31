@@ -183,11 +183,11 @@ class boricaipn extends CRM_Core_Payment_BaseIPN {
     $isTest = $contribution->is_test;
     if ($isTest) {
       //Test mode public certificate file
-      $publicKey = '/home/prathamesh/public_html/borica/certificate-new/BORICA-Public_test_201212.cer';
+      $publicKey = TEST_MODE_PUBLIC_CERT;
     }
     else {
       //Production mode public certificate file
-      $publicKey = '/home/prathamesh/public_html/borica/certificate-new/BORICA-Public_prod_201212.cer';
+      $publicKey = PROD_MODE_PUBLIC_CERT;
     }
     
     $fp = fopen($publicKey, "r");
